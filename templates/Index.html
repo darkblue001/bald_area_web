@@ -1,27 +1,69 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Bald Area Detector</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #fafafa; text-align: center; padding: 40px; }
-    form { background: white; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    input, button { margin: 10px; padding: 8px; }
-    img { max-width: 300px; margin-top: 15px; border-radius: 10px; }
-  </style>
+    <title>Bald Area Detector</title>
+    <style>
+        #canvas {
+            border: 1px solid black;
+            cursor: crosshair;
+        }
+    </style>
 </head>
 <body>
-  <h1>Bald Area Detector</h1>
-  <p>Upload a top-view photo with a coin on your head. Click on the two coin edges and enter the real coin diameter in mm.</p>
-  <form method="POST" enctype="multipart/form-data">
-    <input type="file" name="file" required><br>
-    <input type="text" name="coin_diameter" placeholder="Coin diameter in mm" required><br>
-    <button type="submit">Analyze</button>
-  </form>
+    <h1>Bald Area Detector</h1>
+    <p>Upload a top-view image with a coin on the head. Click on the two edges of the coin and enter its real diameter in mm.</p>
 
-  {% if result %}
-    <h3>{{ result }}</h3>
-    <img src="{{ image }}" alt="Result Image">
-  {% endif %}
+    <form id="uploadForm" method="post" enctype="multipart/form-data">
+        <input type="file" id="imageInput" name="image" required>
+        <br><br>
+        Coin diameter (mm): <input type="number" name="coin_diameter" step="0.1" required>
+        <input type="hidden" name="points" id="pointsInput">
+        <br><br>
+        <canvas id="canvas"></canvas>
+        <br>
+        <input type="submit" value="Upload & Process">
+    </form>
+
+    <p>{{ result_text }}</p>
+    {% if result_img %}
+        <p>Processed Image:</p>
+        <img src="data:image/png;base64,{{ result_img }}">
+    {% endif %}
+
+<script>
+let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
+let img = new Image();
+let points = [];
+
+document.getElementById('imageInput').addEventListener('change', function(e){
+    let reader = new FileReader();
+    reader.onload = function(event){
+        img.src = event.target.result;
+        img.onload = function(){
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+        }
+    }
+    reader.readAsDataURL(e.target.files[0]);
+});
+
+canvas.addEventListener('click', function(e){
+    if(points.length >= 2) return;
+    let rect = canvas.getBoundingClientRect();
+    let x = Math.round(e.clientX - rect.left);
+    let y = Math.round(e.clientY - rect.top);
+    points.push([x, y]);
+
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2*Math.PI);
+    ctx.fill();
+
+    document.getElementById('pointsInput').value = points.map(p => p.join(',')).join(';');
+});
+</script>
+
 </body>
 </html>

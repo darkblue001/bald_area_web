@@ -1,31 +1,50 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, request, render_template
 import cv2
 import numpy as np
-import os
-from werkzeug.utils import secure_filename
+import base64
+from io import BytesIO
+from PIL import Image
 
 app = Flask(__name__)
-UPLOAD_FOLDER = "static/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-@app.route("/", methods=["GET", "POST"])
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == "POST":
-        file = request.files["file"]
-        coin_diameter_mm = float(request.form["coin_diameter"])
-        filename = secure_filename(file.filename)
-        path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(path)
+    result_img = None
+    result_text = ""
 
-        img = cv2.imread(path)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, mask = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
-        bald_area = np.sum(mask == 255)
+    if request.method == 'POST':
+        file = request.files['image']
+        points = request.form.get('points')  # نقاط النقر من JS
+        coin_diameter_mm = float(request.form.get('coin_diameter'))
 
-        result = f"Bald area (in pixels): {bald_area}"
-        return render_template("index.html", result=result, image=path)
-    return render_template("index.html")
+        if file and points:
+            # قراءة الصورة
+            file_bytes = np.frombuffer(file.read(), np.uint8)
+            img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+            # تحويل نقاط من string إلى قائمة من tuples
+            points = points.split(';')
+            points = [tuple(map(int, p.split(','))) for p in points]
+
+            # رسم النقاط على الصورة
+            for p in points:
+                cv2.circle(img, p, 5, (0,0,255), -1)
+
+            # حساب قطر العملة بالبكسل
+            x1, y1 = points[0]
+            x2, y2 = points[1]
+            coin_px = np.sqrt((x2-x1)**2 + (y2-y1)**2)
+
+            # مقياس mm لكل بكسل
+            scale = coin_diameter_mm / coin_px
+
+            result_text = f"Coin scale: {scale:.2f} mm/pixel"
+
+            # تحويل الصورة للعرض على الويب
+            _, buffer = cv2.imencode('.png', img)
+            result_img = base64.b64encode(buffer).decode('utf-8')
+
+    return render_template('index.html', result_img=result_img, result_text=result_text)
+
+if __name__ == '__main__':
+    app.run(debug=True)
