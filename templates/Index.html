@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bald Area Estimator</title>
+<style>
+  body { font-family: 'Segoe UI', Arial; background:#f6f6f6; color:#333; text-align:center; margin:0; padding:20px; }
+  h1 { color:#0078D7; }
+  canvas { border:2px dashed #0078D7; margin-top:10px; max-width:100%; height:auto; cursor:crosshair; }
+  #instructions { background:#fff; padding:15px; border-radius:10px; max-width:600px; margin:auto; box-shadow:0 0 10px rgba(0,0,0,0.1); }
+  #results { background:#fff; padding:10px; border-radius:10px; margin-top:20px; white-space:pre-wrap; text-align:left; max-width:600px; margin:auto; }
+  button { background:#0078D7; color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; margin-top:10px; }
+  button:disabled { background:#aaa; cursor:not-allowed; }
+  input[type="number"] { width:70px; }
+</style>
+</head>
+<body>
+<h1>Bald Area Estimator</h1>
+
+<div id="instructions">
+  <p><b>Step 1:</b> Upload a <b>top-view photo</b> of your head with a <b>coin placed on it</b>.</p>
+  <input type="file" id="fileInput" accept="image/*"><br><br>
+
+  <p><b>Step 2:</b> Click on the <span style="color:red;">red points</span> to mark both edges of the coin.</p>
+  <canvas id="canvas"></canvas>
+
+  <p><b>Step 3:</b> Enter your coin’s real diameter (in millimeters): 
+  <input type="number" id="coin_mm" value="25" step="0.1"> mm</p>
+
+  <p><b>Step 4:</b> Press “Analyze” to estimate the bald area.</p>
+  <button id="analyzeBtn" disabled>Analyze</button>
+</div>
+
+<div id="results">
+  <b>Result:</b>
+  <p id="output">No analysis yet.</p>
+  <div id="preview"></div>
+</div>
+
+<script>
+let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
+let img = new Image();
+let points = [];
+let imgB64 = null;
+
+document.getElementById('fileInput').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    img.onload = ()=>{
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      imgB64 = ev.target.result;
+      document.getElementById('analyzeBtn').disabled = false;
+      points = [];
+    }
+    img.src = ev.target.result;
+  }
+  reader.readAsDataURL(f);
+});
+
+canvas.addEventListener('click', e=>{
+  if(!img.src) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+  points.push([x, y]);
+  if(points.length > 2) points.shift();
+  redraw();
+});
+
+function redraw(){
+  ctx.drawImage(img, 0, 0);
+  ctx.strokeStyle = 'red';
+  ctx.fillStyle = 'red';
+  if(points.length === 1){
+    ctx.beginPath();
+    ctx.arc(points[0][0], points[0][1], 6, 0, Math.PI*2);
+    ctx.fill();
+  } else if(points.length === 2){
+    ctx.beginPath();
+    ctx.arc(points[0][0], points[0][1], 6, 0, Math.PI*2);
+    ctx.arc(points[1][0], points[1][1], 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    ctx.lineTo(points[1][0], points[1][1]);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+document.getElementById('analyzeBtn').addEventListener('click', async ()=>{
+  if(points.length < 2) return alert('Please click both edges of the coin.');
+  const payload = {
+    image_b64: imgB64,
+    point1: points[0],
+    point2: points[1],
+    coin_diameter_mm: parseFloat(document.getElementById('coin_mm').value),
+    density: 40
+  };
+  document.getElementById('output').textContent = 'Analyzing... please wait.';
+  const res = await fetch('/analyze', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if(data.error){
+    document.getElementById('output').textContent = 'Error: ' + data.error;
+    return;
+  }
+  document.getElementById('output').innerHTML = `
+  📏 Coin diameter (pixels): ${data.coin_px}<br>
+  🧠 Bald area: ${data.bald_cm2} cm²<br>
+  🌱 Estimated grafts: ${data.estimated_grafts}`;
+  document.getElementById('preview').innerHTML = `<h4>Overlay Preview:</h4><img src="${data.overlay_b64}" style="max-width:100%; border-radius:10px;">`;
+});
+</script>
+</body>
+</html>
