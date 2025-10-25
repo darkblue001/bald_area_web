@@ -1,3 +1,5 @@
-Flask
-opencv-python
-Pillow
+Flask==2.3.5
+opencv-python-headless==4.8.1.78
+Pillow==10.0.1
+gunicorn==23.2.0
+numpy==1.26.0
